@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>U-Tech Realtor Scraper | Gemini Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        .glass-card { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .u-logo { filter: drop-shadow(0 0 8px #3b82f6); }
+        .log-box::-webkit-scrollbar { width: 4px; }
+        .log-box::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 10px; }
+        .editable-cell:focus { outline: 2px solid #3b82f6; background: rgba(59, 130, 246, 0.1); }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-200 min-h-screen font-sans">
+
+    <!-- Navbar -->
+    <nav class="border-b border-slate-800 bg-slate-900/50 p-4 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white u-logo text-xl">U</div>
+                <h1 class="text-xl font-bold tracking-tight">U-Tech <span class="text-blue-500">Projects</span></h1>
+            </div>
+            <div class="flex gap-4 items-center">
+                <input type="password" id="apiKey" placeholder="Paste Gemini API Key (AIza...)" 
+                    class="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded text-sm w-64 focus:outline-none focus:border-blue-500 transition-all">
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto p-6 space-y-6">
+        <!-- Input Section -->
+        <div class="glass-card p-8 rounded-2xl shadow-2xl border-t border-blue-500/20">
+            <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                <span class="relative flex h-3 w-3">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                </span>
+                Real Estate Lead Extractor
+            </h2>
+            <div class="flex flex-col md:flex-row gap-4">
+                <input type="text" id="targetUrl" placeholder="Enter Yelp, Zillow, or Realtor.com URL..." 
+                    class="flex-1 bg-slate-900 border border-slate-700 p-4 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-white">
+                <button onclick="startExtraction()" id="extractBtn" class="bg-blue-600 hover:bg-blue-500 px-10 py-4 rounded-xl font-bold transition-all shadow-lg shadow-blue-900/40 active:scale-95">
+                    Extract Contacts
+                </button>
+            </div>
+            <div class="flex gap-4 mt-4 overflow-x-auto pb-2">
+                <span class="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Quick Links:</span>
+                <button onclick="document.getElementById('targetUrl').value='https://www.yelp.com/search?find_desc=Realtors&find_loc=Miami%2C+FL'" class="text-xs text-blue-400 hover:underline">Yelp Miami</button>
+                <button onclick="document.getElementById('targetUrl').value='https://www.realtor.com/realestateagents/houston_tx'" class="text-xs text-blue-400 hover:underline">Realtor Houston</button>
+            </div>
+        </div>
+
+        <!-- Dashboard Stats -->
+        <div class="grid md:grid-cols-3 gap-6">
+            <div class="md:col-span-2 glass-card p-5 rounded-2xl h-56 flex flex-col">
+                <div class="flex justify-between text-xs mb-3 text-slate-500 font-mono tracking-tighter">
+                    <span>ENGINE_STATUS: <span id="statusText" class="text-blue-400">IDLE</span></span>
+                    <span id="timestamp"></span>
+                </div>
+                <div id="logConsole" class="log-box flex-1 overflow-y-auto font-mono text-xs space-y-1.5 text-blue-300 bg-black/60 p-4 rounded-xl border border-slate-800">
+                    > System initialized... Standing by for URL input.
+                </div>
+            </div>
+            <div class="glass-card p-6 rounded-2xl flex flex-col justify-center items-center relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-full h-1 bg-slate-800">
+                    <div id="progressBar" class="bg-blue-500 h-full w-0 transition-all duration-700 shadow-[0_0_10px_#3b82f6]"></div>
+                </div>
+                <div class="text-6xl font-black text-white" id="countDisplay">0</div>
+                <div class="text-slate-400 text-xs font-bold uppercase tracking-widest mt-2">Verified Leads</div>
+                <p class="text-[10px] text-slate-500 mt-4 text-center italic">Listings without emails are automatically filtered out.</p>
+            </div>
+        </div>
+
+        <!-- Result Table -->
+        <div class="glass-card rounded-2xl shadow-xl overflow-hidden border border-slate-800">
+            <div class="p-5 border-b border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-900/40">
+                <div>
+                    <h3 class="font-bold text-lg">Lead Database</h3>
+                    <p class="text-xs text-slate-500">Click any cell to edit data manually before export.</p>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="exportData('xlsx')" class="flex items-center gap-2 text-xs bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg font-bold transition-all">
+                        Excel (.xlsx)
+                    </button>
+                    <button onclick="exportData('pdf')" class="flex items-center gap-2 text-xs bg-rose-700 hover:bg-rose-600 px-4 py-2 rounded-lg font-bold transition-all">
+                        PDF Report
+                    </button>
+                    <button onclick="clearTable()" class="text-xs bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg border border-slate-700 transition-all">
+                        Clear All
+                    </button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse" id="resultsTable">
+                    <thead>
+                        <tr class="text-slate-400 text-[11px] uppercase tracking-wider bg-slate-900/80">
+                            <th class="p-4 font-bold border-b border-slate-800">Full Name</th>
+                            <th class="p-4 font-bold border-b border-slate-800">Phone Number</th>
+                            <th class="p-4 font-bold border-b border-slate-800">Verified Email</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="text-sm divide-y divide-slate-800/50">
+                        <!-- Leads go here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Load key from localStorage
+        const apiKeyInput = document.getElementById('apiKey');
+        apiKeyInput.value = localStorage.getItem('u_tech_gemini_key') || '';
+        apiKeyInput.addEventListener('input', (e) => localStorage.setItem('u_tech_gemini_key', e.target.value));
+
+        function addLog(msg, type = 'info') {
+            const console = document.getElementById('logConsole');
+            const entry = document.createElement('div');
+            const colors = { info: 'text-blue-300', warn: 'text-yellow-400', success: 'text-emerald-400', error: 'text-rose-400' };
+            entry.className = colors[type];
+            entry.innerText = `[${new Date().toLocaleTimeString()}] › ${msg}`;
+            console.appendChild(entry);
+            console.scrollTop = console.scrollHeight;
+        }
+
+        async function startExtraction() {
+            const url = document.getElementById('targetUrl').value;
+            const key = apiKeyInput.value;
+
+            if (!url) return alert("Please enter a URL to scrape.");
+            if (!key) return alert("API Key missing. Please paste your Gemini key above.");
+
+            document.getElementById('extractBtn').disabled = true;
+            document.getElementById('statusText').innerText = "SCANNING";
+            addLog(`Initializing scan for: ${url}`, 'info');
+
+            try {
+                // Using Gemini 2.5 Flash-Lite (Free Tier)
+                const proxy = "https://corsproxy.io/?"; 
+                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${key}`;
+
+                const response = await fetch(proxy + encodeURIComponent(geminiUrl), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [{
+                                text: `Scrape real estate agents from this page content: ${url}. 
+                                Return a strict JSON array: [{"name": "string", "phone": "string", "email": "string"}]. 
+                                Important: If email is missing, exclude the agent entirely. 
+                                Do not provide explanation, just the array.`
+                            }]
+                        }]
+                    })
+                });
+
+                if (!response.ok) throw new Error("API Connection Failed. Check your key.");
+
+                const data = await response.json();
+                const rawText = data.candidates[0].content.parts[0].text;
+                
+                // Clean the response in case model includes Markdown backticks
+                const cleanedJson = JSON.parse(rawText.replace(/```json|```/g, ""));
+                
+                if (cleanedJson.length === 0) {
+                    addLog("No agents with emails found on this page.", "warn");
+                } else {
+                    renderData(cleanedJson);
+                    addLog(`Success! Found ${cleanedJson.length} leads.`, "success");
+                }
+
+            } catch (err) {
+                addLog(`Error: ${err.message}`, "error");
+                console.error(err);
+            } finally {
+                document.getElementById('extractBtn').disabled = false;
+                document.getElementById('statusText').innerText = "IDLE";
+            }
+        }
+
+        function renderData(items) {
+            const tbody = document.getElementById('tableBody');
+            items.forEach(item => {
+                const row = document.createElement('tr');
+                row.className = "hover:bg-blue-500/5 transition-all group";
+                row.innerHTML = `
+                    <td class="p-4 border-b border-slate-800 font-medium editable-cell" contenteditable="true">${item.name || 'N/A'}</td>
+                    <td class="p-4 border-b border-slate-800 text-slate-400 editable-cell" contenteditable="true">${item.phone || 'N/A'}</td>
+                    <td class="p-4 border-b border-slate-800 text-blue-400 editable-cell" contenteditable="true">${item.email || 'N/A'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+            updateStats();
+        }
+
+        function updateStats() {
+            const count = document.getElementById('tableBody').children.length;
+            document.getElementById('countDisplay').innerText = count;
+            document.getElementById('progressBar').style.width = Math.min(count * 5, 100) + '%';
+        }
+
+        function clearTable() {
+            if(confirm("Clear all extracted leads?")) {
+                document.getElementById('tableBody').innerHTML = '';
+                updateStats();
+                addLog("Database cleared.", "warn");
+            }
+        }
+
+        function exportData(type) {
+            const table = document.getElementById('resultsTable');
+            const timestamp = new Date().toISOString().slice(0, 10);
+            
+            if (type === 'xlsx') {
+                const wb = XLSX.utils.table_to_book(table);
+                XLSX.writeFile(wb, `UTech_Leads_${timestamp}.xlsx`);
+            } else {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                doc.setFontSize(18);
+                doc.text("U-Tech Projects: Real Estate Lead Report", 14, 20);
+                doc.setFontSize(10);
+                doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 28);
+                doc.autoTable({ 
+                    html: '#resultsTable', 
+                    startY: 35,
+                    theme: 'striped',
+                    headStyles: { fillColor: [59, 130, 246] }
+                });
+                doc.save(`UTech_Report_${timestamp}.pdf`);
+            }
+            addLog(`Exported ${type.toUpperCase()} file.`, "success");
+        }
+
+        // Live Clock
+        setInterval(() => {
+            document.getElementById('timestamp').innerText = new Date().toLocaleTimeString();
+        }, 1000);
+    </script>
+</body>
+</html>
